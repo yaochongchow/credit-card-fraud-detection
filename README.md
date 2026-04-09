@@ -18,6 +18,10 @@ Comparative analysis of machine learning models for detecting fraudulent credit 
 
 A 2D PCA projection shows that fraudulent transactions largely overlap with legitimate ones, with only a few clear outliers. A t-SNE visualization (8,000 transaction sample) confirms that fraud cases are scattered across the embedding with only small isolated clusters — indicating that simple linear decision boundaries are insufficient for this problem.
 
+| PCA Projection | Explained Variance | t-SNE |
+|---|---|---|
+| ![PCA](assets/Credit-Card-PCA.png) | ![Variance](assets/Credit-Card-Variance.png) | ![t-SNE](assets/Credit-Card-t-SNE.png) |
+
 ### Preprocessing
 
 - No missing values; no imputation required
@@ -121,6 +125,60 @@ Tuning was performed using `GridSearchCV` (LR) and `RandomizedSearchCV` (RF, XGB
 | SVM (SMOTE+CW) | 0.20 | 100.0 | 0.00 | 0.649 |
 
 > **Bold rows indicate the selected best model.** PR-AUC is the primary metric due to class imbalance — accuracy is misleading when 99.83% of transactions are legitimate.
+
+---
+
+---
+
+## ROC and Precision-Recall Curves
+
+<details>
+<summary><strong>Logistic Regression</strong></summary>
+
+| Strategy | ROC Curve | PR Curve |
+|---|---|---|
+| None | ![](assets/LR-N-ROC.png) | ![](assets/LR-N-PRC.png) |
+| Class Weight | ![](assets/LR-CW-ROC.png) | ![](assets/LR-CW-PRC.png) |
+| SMOTE | ![](assets/LR-S-ROC.png) | ![](assets/LR-S-PRC.png) |
+| SMOTE + CW | ![](assets/LR-SCW-ROC.png) | ![](assets/LR-SCW-PRC.png) |
+
+</details>
+
+<details>
+<summary><strong>Random Forest</strong></summary>
+
+| Strategy | ROC Curve | PR Curve |
+|---|---|---|
+| None | ![](assets/RF-N-ROC.png) | ![](assets/RF-N-PRC.png) |
+| Class Weight | ![](assets/RF-CW-ROC.png) | ![](assets/RF-CW-PRC.png) |
+| SMOTE | ![](assets/RF-S-ROC.png) | ![](assets/RF-S-PRC.png) |
+| SMOTE + CW | ![](assets/RF-SCW-ROC.png) | ![](assets/RF-SCW-PRC.png) |
+
+</details>
+
+<details>
+<summary><strong>XGBoost</strong></summary>
+
+| Strategy | ROC Curve | PR Curve |
+|---|---|---|
+| None | ![](assets/XGBOOST-N-ROC.png) | ![](assets/XGBOOST-N-PRC.png) |
+| Class Weight | ![](assets/XGBOOST-CW-ROC.png) | ![](assets/XGBOOST-CW-PRC.png) |
+| SMOTE | ![](assets/XGBOOST-S-ROC.png) | ![](assets/XGBOOST-S-PRC.png) |
+| SMOTE + CW | ![](assets/XGBOOST-SCW-ROC.png) | ![](assets/XGBOOST-SCW-PRC.png) |
+
+</details>
+
+<details>
+<summary><strong>Support Vector Machine</strong></summary>
+
+| Strategy | ROC Curve | PR Curve |
+|---|---|---|
+| None | ![](assets/SVM-N-ROC.png) | ![](assets/SVM-N-PRC.png) |
+| Class Weight | ![](assets/SVM-CW-ROC.png) | ![](assets/SVM-CW-PRC.png) |
+| SMOTE | ![](assets/SVM-S-ROC.png) | ![](assets/SVM-S-PRC.png) |
+| SMOTE + CW | ![](assets/SVM-SCW-ROC.png) | ![](assets/SVM-SCW-PRC.png) |
+
+</details>
 
 ---
 
