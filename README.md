@@ -2,13 +2,23 @@
 
 Comparative analysis of machine learning models for detecting fraudulent credit card transactions. The dataset is severely imbalanced (0.17% fraud rate), so multiple rebalancing strategies are evaluated alongside each classifier. GPU acceleration is used throughout via cuML and XGBoost CUDA support.
 
+## Demo
+
+![Streamlit demo](outputs/streamlit_demo.gif)
+
+A short walkthrough of the Streamlit app loading a fraud sample, showing all model predictions, and scrolling down to feature importance. You can regenerate it with:
+
+```bash
+python scripts/record_demo_gif.py --url http://localhost:8501 --output outputs/streamlit_demo.gif
+```
+
 ---
 
 ## Quick Start
 
 **1. Get the dataset**
 
-Download `creditcard.csv` from [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) and place it in the project root.
+Download the dataset from [Kaggle — Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud), then place the extracted `creditcard.csv` file in the project root.
 
 **2. Create the environment**
 
