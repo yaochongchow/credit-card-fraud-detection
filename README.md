@@ -132,7 +132,7 @@ Tuning was performed using `GridSearchCV` (LR) and `RandomizedSearchCV` (RF, XGB
 
 ## ROC and Precision-Recall Curves
 
-<details>
+<details open>
 <summary><strong>Logistic Regression</strong></summary>
 
 | Strategy | ROC Curve | PR Curve |
@@ -144,7 +144,7 @@ Tuning was performed using `GridSearchCV` (LR) and `RandomizedSearchCV` (RF, XGB
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Random Forest</strong></summary>
 
 | Strategy | ROC Curve | PR Curve |
@@ -156,7 +156,7 @@ Tuning was performed using `GridSearchCV` (LR) and `RandomizedSearchCV` (RF, XGB
 
 </details>
 
-<details>
+<details open>
 <summary><strong>XGBoost</strong></summary>
 
 | Strategy | ROC Curve | PR Curve |
@@ -168,7 +168,7 @@ Tuning was performed using `GridSearchCV` (LR) and `RandomizedSearchCV` (RF, XGB
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Support Vector Machine</strong></summary>
 
 | Strategy | ROC Curve | PR Curve |
