@@ -18,32 +18,44 @@ pip install -r requirements.txt
 
 > For GPU acceleration (optional), install [RAPIDS cuML](https://rapids.ai/start.html) matching your CUDA version.
 
-**3. Run all experiments**
+**3. Launch the interactive demo** *(fastest way to see results)*
+
+```bash
+# One-time: train and save the best model
+python scripts/train_best_model.py --data creditcard.csv
+
+# Start the Streamlit app
+streamlit run app.py
+```
+
+The app opens in your browser. Load real fraud/legitimate samples, adjust features, and see fraud probability update live.
+
+**4. Run all experiments**
 
 ```bash
 python scripts/run_experiment.py --data creditcard.csv
 ```
 
-This trains all 16 model × strategy combinations, tunes thresholds, and saves results.
+Trains all 16 model × strategy combinations, tunes thresholds, and saves results.
 
-**4. Where outputs are saved**
+**5. Where outputs are saved**
 
 ```
 outputs/
-  results.csv              # full metrics table for all models
-  <MODEL>-<STRATEGY>-roc-prc.png      # ROC and PR curves
-  <MODEL>-<STRATEGY>-analysis.png     # threshold sweep, calibration, cost curve
+  results.csv                          # full metrics table for all models
+  <MODEL>-<STRATEGY>-roc-prc.png       # ROC and PR curves
+  <MODEL>-<STRATEGY>-analysis.png      # threshold sweep, calibration, cost curve
 ```
 
-**5. Reproduce a single model**
+**6. Reproduce a single model**
 
 ```bash
 python scripts/run_experiment.py --data creditcard.csv --models xgb --strategies smote
 ```
 
-**6. Explore interactively**
+**7. Explore interactively**
 
-Open any notebook in `notebooks/` for step-by-step walkthroughs of each model.
+Open any notebook for step-by-step walkthroughs of each model.
 
 ---
 
@@ -78,9 +90,12 @@ graph LR
 │   ├── train.py       # tune(), tune_threshold()
 │   └── evaluate.py    # metrics, ROC/PR/calibration/cost plots
 ├── scripts/
-│   └── run_experiment.py   # one-command full pipeline
+│   ├── train_best_model.py # train XGBoost+SMOTE, save model artefacts
+│   └── run_experiment.py   # one-command full pipeline (all 16 combos)
+├── model/             # saved model artefacts (git-ignored)
 ├── assets/            # charts embedded in README
 ├── outputs/           # results.csv + plots (git-ignored except .gitkeep)
+├── app.py             # Streamlit demo
 ├── requirements.txt
 └── README.md
 ```
