@@ -8,33 +8,46 @@ Prerequisites:
     python scripts/train_best_model.py --data creditcard.csv
 """
 
+import json
 import os
+
+import joblib
 import numpy as np
 import pandas as pd
-import joblib
-import streamlit as st
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Credit Card Fraud Detector",
     page_icon="🔍",
     layout="wide",
 )
 
-# ── Load model artefacts ─────────────────────────────────────────────────────
 MODEL_DIR = "model"
 
+MODEL_REGISTRY = {
+    "lr_smote":  {"label": "Logistic Regression",  "strategy": "SMOTE",        "pr_auc": 0.800, "roc_auc": 0.977, "f1": 0.14},
+    "rf_cw":     {"label": "Random Forest",         "strategy": "Class Weight", "pr_auc": 0.887, "roc_auc": 0.984, "f1": 0.87},
+    "xgb_smote": {"label": "XGBoost",               "strategy": "SMOTE",        "pr_auc": 0.879, "roc_auc": 0.985, "f1": 0.89},
+    "svm_smote": {"label": "SVM",                   "strategy": "SMOTE",        "pr_auc": 0.735, "roc_auc": 0.977, "f1": 0.00},
+}
+
+# ── Load artefacts ────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_artefacts():
-    model   = joblib.load(os.path.join(MODEL_DIR, "xgb_smote.pkl"))
-    scaler  = joblib.load(os.path.join(MODEL_DIR, "scaler.pkl"))
-    with open(os.path.join(MODEL_DIR, "threshold.txt")) as f:
-        threshold = float(f.read().strip())
+    scaler = joblib.load(os.path.join(MODEL_DIR, "scaler.pkl"))
     with open(os.path.join(MODEL_DIR, "feature_names.txt")) as f:
         feature_names = f.read().strip().splitlines()
-    return model, scaler, threshold, feature_names
+    with open(os.path.join(MODEL_DIR, "thresholds.json")) as f:
+        thresholds = json.load(f)
+    models = {}
+    for key in MODEL_REGISTRY:
+        path = os.path.join(MODEL_DIR, f"{key}.pkl")
+        if os.path.exists(path):
+            models[key] = joblib.load(path)
+    return models, scaler, thresholds, feature_names
 
 
 @st.cache_data
@@ -49,8 +62,8 @@ def load_sample_transactions():
 
 
 try:
-    model, scaler, THRESHOLD, feature_names = load_artefacts()
-    model_loaded = True
+    models, scaler, thresholds, feature_names = load_artefacts()
+    model_loaded = bool(models)
 except Exception:
     model_loaded = False
 
@@ -58,29 +71,31 @@ fraud_samples, legit_samples = load_sample_transactions()
 has_samples = fraud_samples is not None
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def predict(feature_values: np.ndarray):
-    """Scale features and return (fraud_probability, is_fraud)."""
-    X = feature_values.reshape(1, -1)
-    X_scaled = scaler.transform(X)
-    prob = model.predict_proba(X_scaled)[0, 1]
-    return float(prob), prob >= THRESHOLD
+def predict_all(feature_vector: np.ndarray) -> dict:
+    X = scaler.transform(feature_vector.reshape(1, -1))
+    results = {}
+    for key, model in models.items():
+        prob = float(model.predict_proba(X)[0, 1])
+        thr  = thresholds.get(key, 0.5)
+        results[key] = {"prob": prob, "fraud": prob >= thr, "threshold": thr}
+    return results
 
 
-def gauge_chart(prob: float, threshold: float):
-    color = "#e74c3c" if prob >= threshold else "#2ecc71"
+def mini_gauge(prob: float, threshold: float, title: str):
+    color = "#e74c3c" if prob >= threshold else "#27ae60"
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=round(prob * 100, 1),
-        number={"suffix": "%", "font": {"size": 48}},
-        title={"text": "Fraud Probability", "font": {"size": 18}},
+        number={"suffix": "%", "font": {"size": 36}},
+        title={"text": title, "font": {"size": 13}},
         gauge={
-            "axis": {"range": [0, 100], "tickwidth": 1},
+            "axis": {"range": [0, 100], "tickwidth": 1, "tickfont": {"size": 9}},
             "bar": {"color": color, "thickness": 0.3},
             "bgcolor": "white",
             "steps": [
-                {"range": [0, 30],  "color": "#d5f5e3"},
+                {"range": [0,  30], "color": "#d5f5e3"},
                 {"range": [30, 60], "color": "#fef9e7"},
-                {"range": [60, 100],"color": "#fdecea"},
+                {"range": [60,100], "color": "#fdecea"},
             ],
             "threshold": {
                 "line": {"color": "#2c3e50", "width": 3},
@@ -89,26 +104,56 @@ def gauge_chart(prob: float, threshold: float):
             },
         },
     ))
-    fig.update_layout(height=280, margin=dict(t=40, b=0, l=20, r=20))
+    fig.update_layout(height=220, margin=dict(t=50, b=0, l=10, r=10))
     return fig
 
 
-def importance_chart(model, feature_names):
+def comparison_bar(results: dict):
+    rows = []
+    for key, r in results.items():
+        meta = MODEL_REGISTRY[key]
+        rows.append({
+            "Model": f"{meta['label']}\n({meta['strategy']})",
+            "Fraud Probability (%)": round(r["prob"] * 100, 2),
+            "Verdict": "FRAUD" if r["fraud"] else "LEGIT",
+        })
+    df = pd.DataFrame(rows)
+    colors = ["#e74c3c" if v == "FRAUD" else "#27ae60" for v in df["Verdict"]]
+    fig = go.Figure(go.Bar(
+        x=df["Model"],
+        y=df["Fraud Probability (%)"],
+        marker_color=colors,
+        text=df["Fraud Probability (%)"].apply(lambda x: f"{x:.1f}%"),
+        textposition="outside",
+    ))
+    fig.update_layout(
+        title="Fraud Probability by Model",
+        yaxis=dict(range=[0, 110], title="Fraud Probability (%)"),
+        xaxis_title="",
+        height=340,
+        margin=dict(t=50, b=20, l=20, r=20),
+        showlegend=False,
+    )
+    return fig
+
+
+def importance_chart(model, feature_names, title):
+    if not hasattr(model, "feature_importances_"):
+        return None
     scores = model.feature_importances_
-    df = pd.DataFrame({"feature": feature_names, "importance": scores})
-    df = df.sort_values("importance", ascending=True).tail(15)
+    df = pd.DataFrame({"Feature": feature_names, "Importance": scores})
+    df = df.sort_values("Importance", ascending=True).tail(15)
     fig = px.bar(
-        df, x="importance", y="feature", orientation="h",
-        title="Top 15 Feature Importances (XGBoost)",
-        color="importance",
+        df, x="Importance", y="Feature", orientation="h",
+        title=title,
+        color="Importance",
         color_continuous_scale=["#aed6f1", "#1a5276"],
     )
     fig.update_layout(
-        height=420,
-        margin=dict(t=40, b=20, l=10, r=10),
+        height=400,
+        margin=dict(t=40, b=10, l=10, r=10),
         coloraxis_showscale=False,
         yaxis_title="",
-        xaxis_title="Importance Score",
     )
     return fig
 
@@ -116,52 +161,49 @@ def importance_chart(model, feature_names):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("🔍 Fraud Detector")
-    st.caption("XGBoost + SMOTE · PR-AUC 0.879 · F1 0.89")
+    st.caption("4 models · best config per classifier")
     st.divider()
 
     st.subheader("Model performance (test set)")
-    col1, col2 = st.columns(2)
-    col1.metric("PR-AUC",  "0.879")
-    col2.metric("ROC-AUC", "0.985")
-    col1.metric("F1",      "0.89")
-    col2.metric("Recall",  "86.7%")
-    st.metric("False positives / 10k transactions", "3.9")
+    perf_df = pd.DataFrame([
+        {
+            "Model": f"{v['label']} ({v['strategy']})",
+            "PR-AUC": v["pr_auc"],
+            "ROC-AUC": v["roc_auc"],
+            "F1": v["f1"],
+        }
+        for v in MODEL_REGISTRY.values()
+    ])
+    st.dataframe(perf_df, use_container_width=True, hide_index=True)
+
     st.divider()
-
-    st.subheader("Decision threshold")
-    if model_loaded:
-        st.info(f"Optimal threshold: **{THRESHOLD:.3f}**\n\nTuned on a held-out validation slice to maximise F1.")
-
-    st.divider()
-    st.caption("Dataset: 284,807 transactions · 0.17% fraud rate\nModel: XGBoost + SMOTE oversampling")
+    st.caption(
+        "Dataset: 284,807 transactions · 0.17% fraud rate\n\n"
+        "Thresholds tuned on held-out validation slice to maximise F1."
+    )
 
 
-# ── Main area ─────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 st.title("Credit Card Fraud Detection")
 st.markdown(
-    "Enter transaction details manually **or** load a real sample from the dataset. "
-    "The model returns a fraud probability in real time."
+    "Load a real transaction or adjust the sliders, then see all four models predict simultaneously."
 )
 
 if not model_loaded:
     st.error(
-        "Model not found. Run this first:\n\n"
+        "No models found. Run this first:\n\n"
         "```\npython scripts/train_best_model.py --data creditcard.csv\n```"
     )
     st.stop()
 
 # ── Sample loader ─────────────────────────────────────────────────────────────
 st.subheader("Load a sample transaction")
-
-load_col1, load_col2, load_col3 = st.columns([1, 1, 4])
-
+c1, c2, _ = st.columns([1, 1, 4])
 if has_samples:
-    if load_col1.button("🚨 Load fraud sample", use_container_width=True):
-        idx = np.random.randint(len(fraud_samples))
-        st.session_state["sample"] = fraud_samples.iloc[idx]
-    if load_col2.button("✅ Load legit sample", use_container_width=True):
-        idx = np.random.randint(len(legit_samples))
-        st.session_state["sample"] = legit_samples.iloc[idx]
+    if c1.button("🚨 Fraud sample", use_container_width=True):
+        st.session_state["sample"] = fraud_samples.iloc[np.random.randint(len(fraud_samples))]
+    if c2.button("✅ Legit sample", use_container_width=True):
+        st.session_state["sample"] = legit_samples.iloc[np.random.randint(len(legit_samples))]
 else:
     st.info("Place `creditcard.csv` in the project root to enable sample loading.")
 
@@ -169,75 +211,73 @@ st.divider()
 
 # ── Feature inputs ────────────────────────────────────────────────────────────
 sample = st.session_state.get("sample", None)
-
-st.subheader("Transaction features")
-
 amount_default = float(np.expm1(sample["Log_Amount"])) if sample is not None else 100.0
-amount = st.number_input(
-    "Transaction Amount ($)",
-    min_value=0.0,
-    max_value=30000.0,
-    value=amount_default,
-    step=1.0,
-)
+amount = st.number_input("Transaction Amount ($)", min_value=0.0, max_value=30000.0,
+                          value=amount_default, step=1.0)
 log_amount = np.log1p(amount)
 
 v_features = [f for f in feature_names if f.startswith("V")]
 v_defaults = {f: float(sample[f]) if sample is not None else 0.0 for f in v_features}
 
-# Render V features in a 4-column grid
 st.markdown("**PCA Components (V1 – V28)**")
 cols = st.columns(4)
 v_values = {}
 for i, feat in enumerate(v_features):
     with cols[i % 4]:
-        v_values[feat] = st.slider(
-            feat,
-            min_value=-20.0,
-            max_value=20.0,
-            value=round(v_defaults[feat], 3),
-            step=0.001,
-            format="%.3f",
-        )
+        v_values[feat] = st.slider(feat, min_value=-20.0, max_value=20.0,
+                                    value=round(v_defaults[feat], 3), step=0.001, format="%.3f")
 
-# Assemble feature vector in correct order
-feature_vector = np.array(
-    [v_values[f] for f in v_features] + [log_amount],
-    dtype=np.float64,
-)
+feature_vector = np.array([v_values[f] for f in v_features] + [log_amount], dtype=np.float64)
 
-# ── Predict ───────────────────────────────────────────────────────────────────
+# ── Predictions ───────────────────────────────────────────────────────────────
 st.divider()
-st.subheader("Prediction")
+st.subheader("Predictions — all models")
 
-prob, is_fraud = predict(feature_vector)
+results = predict_all(feature_vector)
 
-result_col, gauge_col = st.columns([1, 1])
+# True label badge (if sample loaded)
+if sample is not None and "Class" in sample:
+    true_label = int(sample["Class"])
+    label_str = "🚨 True label: **FRAUD**" if true_label == 1 else "✅ True label: **LEGITIMATE**"
+    st.info(label_str)
 
-with gauge_col:
-    st.plotly_chart(gauge_chart(prob, THRESHOLD), use_container_width=True)
+# 4 model cards
+model_keys = list(results.keys())
+gauge_cols = st.columns(len(model_keys))
 
-with result_col:
-    if is_fraud:
-        st.error("### 🚨 FRAUD DETECTED")
-    else:
-        st.success("### ✅ LEGITIMATE TRANSACTION")
+for col, key in zip(gauge_cols, model_keys):
+    r    = results[key]
+    meta = MODEL_REGISTRY[key]
+    with col:
+        title = f"{meta['label']}<br>({meta['strategy']})"
+        st.plotly_chart(mini_gauge(r["prob"], r["threshold"], title),
+                        use_container_width=True)
+        if r["fraud"]:
+            st.error("🚨 **FRAUD**", icon=None)
+        else:
+            st.success("✅ **LEGIT**", icon=None)
+        st.caption(f"threshold: {r['threshold']:.3f}")
 
-    st.markdown(f"**Probability:** `{prob:.4f}`")
-    st.markdown(f"**Threshold:** `{THRESHOLD:.3f}`")
-    st.markdown(f"**Decision:** `{'FRAUD' if is_fraud else 'LEGITIMATE'}`")
-
-    if sample is not None:
-        true_label = int(sample.get("Class", -1))
-        if true_label != -1:
-            label_str = "🚨 Fraud" if true_label == 1 else "✅ Legitimate"
-            correct = (true_label == 1) == is_fraud
-            st.markdown(f"**True label:** {label_str}")
-            if correct:
-                st.success("Model prediction is **correct**")
-            else:
-                st.warning("Model prediction is **incorrect**")
+# Comparison bar chart
+st.plotly_chart(comparison_bar(results), use_container_width=True)
 
 # ── Feature importance ────────────────────────────────────────────────────────
 st.divider()
-st.plotly_chart(importance_chart(model, feature_names), use_container_width=True)
+st.subheader("Feature Importance")
+
+importance_models = {k: v for k, v in models.items() if hasattr(v, "feature_importances_")}
+if importance_models:
+    selected_key = st.selectbox(
+        "Select model",
+        options=list(importance_models.keys()),
+        format_func=lambda k: f"{MODEL_REGISTRY[k]['label']} ({MODEL_REGISTRY[k]['strategy']})",
+    )
+    fig = importance_chart(
+        importance_models[selected_key],
+        feature_names,
+        f"Top 15 Feature Importances — {MODEL_REGISTRY[selected_key]['label']}",
+    )
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Feature importance is available for Random Forest and XGBoost.")
