@@ -4,6 +4,89 @@ Comparative analysis of machine learning models for detecting fraudulent credit 
 
 ---
 
+## Quick Start
+
+**1. Get the dataset**
+
+Download `creditcard.csv` from [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) and place it in the project root.
+
+**2. Create the environment**
+
+```bash
+pip install -r requirements.txt
+```
+
+> For GPU acceleration (optional), install [RAPIDS cuML](https://rapids.ai/start.html) matching your CUDA version.
+
+**3. Run all experiments**
+
+```bash
+python scripts/run_experiment.py --data creditcard.csv
+```
+
+This trains all 16 model × strategy combinations, tunes thresholds, and saves results.
+
+**4. Where outputs are saved**
+
+```
+outputs/
+  results.csv              # full metrics table for all models
+  <MODEL>-<STRATEGY>-roc-prc.png      # ROC and PR curves
+  <MODEL>-<STRATEGY>-analysis.png     # threshold sweep, calibration, cost curve
+```
+
+**5. Reproduce a single model**
+
+```bash
+python scripts/run_experiment.py --data creditcard.csv --models xgb --strategies smote
+```
+
+**6. Explore interactively**
+
+Open any notebook in `notebooks/` for step-by-step walkthroughs of each model.
+
+---
+
+## Pipeline
+
+```mermaid
+graph LR
+    A[creditcard.csv] --> B[Preprocessing\nLog-transform Amount\nStandardScaler]
+    B --> C[Stratified 80/20 Split\nTrain / Test]
+    C --> D{Imbalance Strategy\nNone · Class Weight\nSMOTE · SMOTE+CW}
+    D --> E[Hyperparameter Tuning\nRandomizedSearchCV\n5-fold StratifiedKFold\nOptimise PR-AUC]
+    E --> F[Threshold Tuning\nSweep on held-out\nvalidation slice]
+    F --> G[Evaluation on\nHeld-out Test Set\nPR-AUC · ROC-AUC\nF1 · Calibration\nCost Analysis]
+```
+
+---
+
+## Project Structure
+
+```
+.
+├── notebooks/
+│   ├── LogisticRegression.ipynb
+│   ├── RandomForest.ipynb
+│   ├── SVM.ipynb
+│   ├── XGBOOST.ipynb
+│   └── AnomalyDetection.ipynb    # Isolation Forest baseline
+├── src/
+│   ├── data.py        # load_data(), preprocess()
+│   ├── imbalance.py   # SMOTE, class-weight helpers
+│   ├── models.py      # model definitions + hyperparameter grids
+│   ├── train.py       # tune(), tune_threshold()
+│   └── evaluate.py    # metrics, ROC/PR/calibration/cost plots
+├── scripts/
+│   └── run_experiment.py   # one-command full pipeline
+├── assets/            # charts embedded in README
+├── outputs/           # results.csv + plots (git-ignored except .gitkeep)
+├── requirements.txt
+└── README.md
+```
+
+---
+
 ## Dataset
 
 - **Source:** [Kaggle — Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)
@@ -36,9 +119,10 @@ A 2D PCA projection shows that fraudulent transactions largely overlap with legi
 | Notebook | Model | Acceleration |
 |---|---|---|
 | `LogisticRegression.ipynb` | Logistic Regression | cuML (GPU) |
-| `RandomForrest.ipynb` | Random Forest | cuML (GPU) |
+| `RandomForest.ipynb` | Random Forest | cuML (GPU) |
 | `SVM.ipynb` | Support Vector Machine | cuML (GPU) |
 | `XGBOOST.ipynb` | XGBoost | CUDA (`tree_method="hist"`) |
+| `AnomalyDetection.ipynb` | Isolation Forest (baseline) | scikit-learn |
 
 ---
 
@@ -179,6 +263,22 @@ Tuning was performed using `GridSearchCV` (LR) and `RandomizedSearchCV` (RF, XGB
 | SMOTE + CW | ![](assets/SVM-SCW-ROC.png) | ![](assets/SVM-SCW-PRC.png) |
 
 </details>
+
+---
+
+## Experimental Validity
+
+A key concern in imbalanced classification is **data leakage** — allowing test-set information to influence training. This project prevents it at every step:
+
+| Step | Where it happens | Leakage risk and mitigation |
+|---|---|---|
+| **StandardScaler** | Fit on train split only, applied to test | Fitting on full data would leak test-set statistics into the scaler |
+| **SMOTE** | Applied inside each CV fold on the fold's training partition only | Applying before CV would let synthetic samples near test-fold points inflate validation scores |
+| **Threshold tuning** | Tuned on a held-out 10% slice of the training data | Tuning on the test set would over-optimise for a specific test split |
+| **Hyperparameter search** | `StratifiedKFold(n_splits=5)` across train split only | Cross-validation never touches the test set |
+| **Final evaluation** | Single held-out test set, evaluated once per model | No repeated evaluation that would cause implicit test-set overfitting |
+
+The result is that all reported test-set metrics (PR-AUC, ROC-AUC, F1, confusion matrix) are genuine out-of-sample estimates.
 
 ---
 

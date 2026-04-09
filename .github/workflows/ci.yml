@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-import:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Install CPU-only packages (cuML not available on standard runners)
+          pip install numpy pandas scikit-learn imbalanced-learn xgboost matplotlib seaborn jupyter
+
+      - name: Validate src imports
+        run: |
+          python -c "
+          from src.data import load_data, preprocess
+          from src.imbalance import prepare, get_class_weight, STRATEGIES
+          from src.models import get_model, get_param_grid
+          from src.train import tune, tune_threshold
+          from src.evaluate import compute_metrics, plot_roc, plot_prc, plot_calibration, plot_cost_curve
+          print('All src imports OK')
+          "
+
+      - name: Check run_experiment.py is importable
+        run: python -c "import importlib.util, sys; spec = importlib.util.spec_from_file_location('run', 'scripts/run_experiment.py'); print('Script OK')"
+
+      - name: Validate notebook syntax
+        run: |
+          pip install nbformat
+          python -c "
+          import nbformat, glob, sys
+          errors = []
+          for path in glob.glob('*.ipynb'):
+              try:
+                  with open(path) as f:
+                      nb = nbformat.read(f, as_version=4)
+                  nbformat.validate(nb)
+                  print(f'OK: {path}')
+              except Exception as e:
+                  errors.append(f'{path}: {e}')
+          if errors:
+              print('ERRORS:')
+              for e in errors: print(e)
+              sys.exit(1)
+          "
